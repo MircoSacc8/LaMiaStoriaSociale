@@ -1,0 +1,604 @@
+<!DOCTYPE html>
+<html lang="it">
+<head>
+  <meta charset="UTF-8"/>
+  <meta name="viewport" content="width=device-width, initial-scale=1.0"/>
+  <title>Storie Sociali</title>
+  <link rel="stylesheet" href="https://fonts.googleapis.com/css2?family=Fredoka:wght@400;500;600;700&display=swap"/>
+  <script src="https://unpkg.com/react@18/umd/react.production.min.js"></script>
+  <script src="https://unpkg.com/react-dom@18/umd/react-dom.production.min.js"></script>
+  <script src="https://unpkg.com/@babel/standalone/babel.min.js"></script>
+  <style>
+    *, *::before, *::after { box-sizing: border-box; margin: 0; padding: 0; }
+    html, body { height: 100%; }
+    body { font-family: 'Fredoka', cursive; background: #F0F4FF; }
+    /* desktop background */
+    @media (min-width: 768px) {
+      body { background: linear-gradient(135deg, #667EEA22 0%, #764BA222 50%, #F368E022 100%); }
+    }
+    @media print {
+      .no-print { display: none !important; }
+      body { background: white !important; }
+      @page { margin: 1cm; size: A4 landscape; }
+    }
+    /* scrollbar sottile */
+    ::-webkit-scrollbar { width: 4px; height: 4px; }
+    ::-webkit-scrollbar-thumb { background: #ccc; border-radius: 4px; }
+  </style>
+</head>
+<body>
+  <div id="root"></div>
+  <script type="text/babel">
+const { useState, useRef, useEffect, useCallback } = React;
+const FF = "'Fredoka', cursive";
+
+/* ── responsive hook ── */
+function useW() {
+  const [w, setW] = useState(window.innerWidth);
+  useEffect(() => {
+    const fn = () => setW(window.innerWidth);
+    window.addEventListener("resize", fn);
+    return () => window.removeEventListener("resize", fn);
+  }, []);
+  return w;
+}
+// breakpoint helpers
+const isMobile  = w => w < 640;
+const isTablet  = w => w >= 640 && w < 1024;
+const isDesktop = w => w >= 1024;
+const clamp     = (w, mob, tab, dsk) => isDesktop(w) ? dsk : isTablet(w) ? tab : mob;
+
+/* ── localStorage ── */
+const LS = {
+  get: (k, fb) => { try { const v = localStorage.getItem(k); return v ? JSON.parse(v) : fb; } catch { return fb; } },
+  set: (k, v) => { try { localStorage.setItem(k, JSON.stringify(v)); return true; } catch { return false; } },
+};
+
+/* ── pittogrammi ── */
+const CATEGORIE = [
+  { id:"quotidiane", label:"Quotidiane", emoji:"🪥", items:[
+    {id:"svegliarsi",emoji:"⏰",label:"Svegliarsi"},{id:"colazione",emoji:"🍳",label:"Colazione"},
+    {id:"doccia",emoji:"🚿",label:"Doccia"},{id:"bagno",emoji:"🛁",label:"Bagno"},
+    {id:"denti",emoji:"🪥",label:"Lavarsi i denti"},{id:"vestirsi",emoji:"👕",label:"Vestirsi"},
+    {id:"mani",emoji:"🧼",label:"Lavarsi le mani"},{id:"nanna",emoji:"😴",label:"Nanna"},
+    {id:"pigiama",emoji:"🌙",label:"Pigiama"},{id:"capelli",emoji:"💇",label:"Pettinarsi"},
+    {id:"toilette",emoji:"🚽",label:"Bagno/WC"},{id:"medicine",emoji:"💊",label:"Medicine"},
+  ]},
+  { id:"cibo", label:"Cibo", emoji:"🍕", items:[
+    {id:"pizza",emoji:"🍕",label:"Pizza"},{id:"pasta",emoji:"🍝",label:"Pasta"},
+    {id:"minestra",emoji:"🍲",label:"Minestra"},{id:"pane",emoji:"🍞",label:"Pane"},
+    {id:"frutta",emoji:"🍎",label:"Frutta"},{id:"verdura",emoji:"🥦",label:"Verdura"},
+    {id:"carne",emoji:"🍗",label:"Carne"},{id:"pesce",emoji:"🐟",label:"Pesce"},
+    {id:"uova",emoji:"🥚",label:"Uova"},{id:"latte",emoji:"🥛",label:"Latte"},
+    {id:"succo",emoji:"🧃",label:"Succo"},{id:"acqua",emoji:"💧",label:"Acqua"},
+    {id:"gelato",emoji:"🍦",label:"Gelato"},{id:"dolci",emoji:"🍰",label:"Dolci"},
+    {id:"pranzo_r",emoji:"🍽️",label:"Pranzo"},{id:"cena",emoji:"🌆",label:"Cena"},
+  ]},
+  { id:"luoghi", label:"Luoghi", emoji:"🏫", items:[
+    {id:"scuola",emoji:"🏫",label:"Scuola"},{id:"casa",emoji:"🏠",label:"Casa"},
+    {id:"parco",emoji:"🌳",label:"Parco"},{id:"supermercato",emoji:"🛒",label:"Supermercato"},
+    {id:"ospedale",emoji:"🏥",label:"Ospedale"},{id:"dentista",emoji:"🦷",label:"Dentista"},
+    {id:"barbiere",emoji:"✂️",label:"Barbiere"},{id:"nonni_casa",emoji:"🏡",label:"Dai nonni"},
+    {id:"palestra",emoji:"🏋️",label:"Palestra"},{id:"piscina",emoji:"🏊",label:"Piscina"},
+    {id:"biblioteca",emoji:"📚",label:"Biblioteca"},{id:"chiesa",emoji:"⛪",label:"Chiesa"},
+    {id:"ristorante",emoji:"🍴",label:"Ristorante"},{id:"farmacia",emoji:"💊",label:"Farmacia"},
+    {id:"zoo",emoji:"🦁",label:"Zoo"},{id:"mare",emoji:"🏖️",label:"Mare"},
+  ]},
+  { id:"emozioni", label:"Emozioni", emoji:"😊", items:[
+    {id:"felice",emoji:"😊",label:"Felice"},{id:"triste",emoji:"😢",label:"Triste"},
+    {id:"arrabbiato",emoji:"😠",label:"Arrabbiato"},{id:"spaventato",emoji:"😨",label:"Spaventato"},
+    {id:"sorpreso",emoji:"😲",label:"Sorpreso"},{id:"stanco",emoji:"😴",label:"Stanco"},
+    {id:"ansioso",emoji:"😟",label:"Ansioso"},{id:"eccitato",emoji:"🤩",label:"Eccitato"},
+    {id:"calmo",emoji:"😌",label:"Calmo"},{id:"orgoglioso",emoji:"😎",label:"Orgoglioso"},
+    {id:"confuso",emoji:"😕",label:"Confuso"},{id:"amore",emoji:"🥰",label:"Amore"},
+  ]},
+  { id:"persone", label:"Persone", emoji:"👨‍👩‍👧", items:[
+    {id:"mamma",emoji:"👩",label:"Mamma"},{id:"papa",emoji:"👨",label:"Papà"},
+    {id:"fratello",emoji:"👦",label:"Fratello"},{id:"sorella",emoji:"👧",label:"Sorella"},
+    {id:"nonno",emoji:"👴",label:"Nonno"},{id:"nonna",emoji:"👵",label:"Nonna"},
+    {id:"amico",emoji:"🧑",label:"Amico"},{id:"maestra",emoji:"👩‍🏫",label:"Maestra"},
+    {id:"dottore_p",emoji:"👨‍⚕️",label:"Dottore"},{id:"famiglia",emoji:"👨‍👩‍👧",label:"Famiglia"},
+    {id:"bambino",emoji:"🧒",label:"Bambino"},{id:"terapista",emoji:"🧑‍💼",label:"Terapista"},
+  ]},
+  { id:"lavori", label:"Mestieri", emoji:"👨‍🍳", items:[
+    {id:"cuoco",emoji:"👨‍🍳",label:"Cuoco"},{id:"maestro",emoji:"👨‍🏫",label:"Insegnante"},
+    {id:"medico_l",emoji:"👨‍⚕️",label:"Medico"},{id:"pompiere",emoji:"👨‍🚒",label:"Pompiere"},
+    {id:"polizia",emoji:"👮",label:"Poliziotto"},{id:"meccanico",emoji:"🔧",label:"Meccanico"},
+    {id:"pittore_l",emoji:"🎨",label:"Pittore"},{id:"musicista",emoji:"🎸",label:"Musicista"},
+    {id:"agricoltore",emoji:"👨‍🌾",label:"Contadino"},{id:"scienziato",emoji:"👨‍🔬",label:"Scienziato"},
+    {id:"astronauta",emoji:"👨‍🚀",label:"Astronauta"},{id:"autista",emoji:"👨‍✈️",label:"Autista"},
+  ]},
+  { id:"sport", label:"Sport", emoji:"⚽", items:[
+    {id:"calcio",emoji:"⚽",label:"Calcio"},{id:"nuoto",emoji:"🏊",label:"Nuoto"},
+    {id:"bici",emoji:"🚲",label:"Bicicletta"},{id:"corsa",emoji:"🏃",label:"Correre"},
+    {id:"basket",emoji:"🏀",label:"Basket"},{id:"tennis",emoji:"🎾",label:"Tennis"},
+    {id:"ginnastica",emoji:"🤸",label:"Ginnastica"},{id:"disegno",emoji:"✏️",label:"Disegnare"},
+    {id:"lettura",emoji:"📖",label:"Leggere"},{id:"musica_s",emoji:"🎵",label:"Musica"},
+    {id:"gioco",emoji:"🧩",label:"Giocare"},{id:"tv",emoji:"📺",label:"TV"},
+    {id:"videogiochi",emoji:"🎮",label:"Videogiochi"},{id:"pittura",emoji:"🎨",label:"Pittura"},
+    {id:"ballo",emoji:"💃",label:"Danza"},{id:"yoga",emoji:"🧘",label:"Yoga"},
+  ]},
+  { id:"vestiti", label:"Vestiti", emoji:"👕", items:[
+    {id:"maglietta",emoji:"👕",label:"Maglietta"},{id:"pantaloni",emoji:"👖",label:"Pantaloni"},
+    {id:"scarpe",emoji:"👟",label:"Scarpe"},{id:"cappotto",emoji:"🧥",label:"Cappotto"},
+    {id:"cappello",emoji:"🧢",label:"Cappello"},{id:"sciarpa",emoji:"🧣",label:"Sciarpa"},
+    {id:"guanti",emoji:"🧤",label:"Guanti"},{id:"calze",emoji:"🧦",label:"Calze"},
+    {id:"vestito",emoji:"👗",label:"Vestito"},{id:"zaino",emoji:"🎒",label:"Zaino"},
+    {id:"occhiali",emoji:"👓",label:"Occhiali"},{id:"pigiama_v",emoji:"🌙",label:"Pigiama"},
+  ]},
+  { id:"trasporti", label:"Trasporti", emoji:"🚗", items:[
+    {id:"auto",emoji:"🚗",label:"Auto"},{id:"autobus",emoji:"🚌",label:"Autobus"},
+    {id:"treno",emoji:"🚂",label:"Treno"},{id:"bici_t",emoji:"🚲",label:"Bicicletta"},
+    {id:"aereo",emoji:"✈️",label:"Aereo"},{id:"metro",emoji:"🚇",label:"Metro"},
+    {id:"taxi",emoji:"🚕",label:"Taxi"},{id:"moto",emoji:"🏍️",label:"Moto"},
+    {id:"monopattino",emoji:"🛴",label:"Monopattino"},{id:"barca",emoji:"⛵",label:"Barca"},
+    {id:"ambulanza",emoji:"🚑",label:"Ambulanza"},{id:"piedi",emoji:"🚶",label:"A piedi"},
+  ]},
+];
+const PITT_MAP = {};
+CATEGORIE.forEach(c => c.items.forEach(p => { PITT_MAP[p.id] = p; }));
+
+const PALETTE = ["#FF6B6B","#FF9F43","#FECA57","#48DBFB","#54A0FF","#5F27CD","#00D2D3","#1DD1A1","#C8D6E5","#F368E0"];
+const THEME = {
+  maschio: { primary:"#4A9EE8", secondary:"#EBF4FF", gradient:"linear-gradient(135deg,#4A9EE8,#74B9FF)", light:"#D6EEFF", text:"#1565C0" },
+  femmina: { primary:"#E8609A", secondary:"#FFF0F5", gradient:"linear-gradient(135deg,#E8609A,#FF8EC4)", light:"#FFD6E9", text:"#880E4F" },
+};
+
+/* ── shared styles (size-aware) ── */
+const btnBack  = { background:"rgba(255,255,255,0.3)", border:"none", borderRadius:12, padding:"6px 12px", color:"white", fontWeight:700, cursor:"pointer", fontSize:14, fontFamily:FF };
+const iStyle   = (bc="#FFB347") => ({ width:"100%", padding:"12px 16px", borderRadius:14, border:`2px solid ${bc}`, fontSize:16, fontFamily:FF, outline:"none", boxSizing:"border-box" });
+const aBtn     = (c) => ({ background:c, border:"none", borderRadius:14, padding:"10px 16px", color:"white", fontSize:14, fontWeight:700, cursor:"pointer", fontFamily:FF, boxShadow:`0 4px 12px ${c}44` });
+const gBtn     = { background:"#F5F5F5", border:"none", borderRadius:14, padding:"10px 14px", fontSize:14, cursor:"pointer", fontFamily:FF, fontWeight:700, color:"#666" };
+const oBtn     = { background:"#FFF3E0", border:"none", borderRadius:14, padding:"10px 14px", fontSize:14, cursor:"pointer", fontFamily:FF, fontWeight:700, color:"#E65100" };
+const badgeS   = (tipo) => ({ display:"inline-block", padding:"3px 10px", borderRadius:20, fontSize:11, fontWeight:700, border:"2px solid", background:tipo==="ordinaria"?"#E8F5E9":"#FFF3E0", color:tipo==="ordinaria"?"#2E7D32":"#E65100", borderColor:tipo==="ordinaria"?"#81C784":"#FFB74D" });
+
+/* ── Wrapper responsivo ── */
+function Wrap({ children, bg="#F8FAFF", w }) {
+  const desktop = isDesktop(w);
+  const tablet  = isTablet(w);
+  const maxW    = desktop ? 780 : tablet ? 600 : "100%";
+  return (
+    <div style={{ minHeight:"100vh", display:"flex", justifyContent:"center", alignItems: desktop?"center":"flex-start", padding: desktop?"32px 16px":0 }}>
+      <div style={{ fontFamily:FF, width:"100%", maxWidth:maxW, minHeight: desktop?"auto":"100vh", background:bg, borderRadius: desktop?24:0, boxShadow: desktop?"0 20px 60px rgba(0,0,0,0.15)":0, overflow:"hidden", position:"relative" }}>
+        {children}
+      </div>
+    </div>
+  );
+}
+
+function getGreeting() {
+  const h = new Date().getHours();
+  return h < 12 ? "Buongiorno" : h < 18 ? "Buon pomeriggio" : "Buonasera";
+}
+
+/* ══ ONBOARDING ══ */
+const SLIDES = [
+  { bg:"linear-gradient(135deg,#667EEA,#764BA2)", icon:"🌈", title:"Benvenuto in\nStorie Sociali", desc:"L'app pensata per aiutare i bambini a comprendere le routine quotidiane attraverso immagini e storie.", cta:"Inizia il tour →" },
+  { bg:"linear-gradient(135deg,#4A9EE8,#74B9FF)", icon:"👦", title:"Crea un profilo\nper ogni bambino", desc:"Aggiungi nome, foto e sesso. L'app si colora di azzurro per i maschi e rosa per le femmine.", cta:"Avanti →" },
+  { bg:"linear-gradient(135deg,#FF9F43,#FECA57)", icon:"📖", title:"Costruisci le\ntue storie", desc:"Crea routine ordinarie o eventi speciali. Aggiungi attività con pittogrammi o foto tue.", cta:"Avanti →" },
+  { bg:"linear-gradient(135deg,#00D2D3,#1DD1A1)", icon:"👁️", title:"Mostra la storia\nal bambino", desc:"Tocca Mostra per vedere la storia a schermo intero, un passo alla volta, con grandi immagini.", cta:"Avanti →" },
+  { bg:"linear-gradient(135deg,#FF6B9D,#FFB347)", icon:"🖨️", title:"Stampa e porta\novunque", desc:"Con il tasto 🖨️ apri la vista di stampa e usa Ctrl+P per salvare come PDF.", cta:"Cominciamo! 🎉" },
+];
+function Onboarding({ onDone, w }) {
+  const [slide, setSlide] = useState(0);
+  const [anim, setAnim]   = useState(true);
+  function next() { if (slide===SLIDES.length-1){onDone();return;} setAnim(false); setTimeout(()=>{setSlide(s=>s+1);setAnim(true);},180); }
+  const s = SLIDES[slide];
+  const ctaColors = ["#667EEA","#4A9EE8","#FF9F43","#00D2D3","#FF6B9D"];
+  const iconSize = clamp(w, 120, 140, 160);
+  const titleSize = clamp(w, 26, 30, 34);
+  const descSize  = clamp(w, 15, 17, 18);
+  return (
+    <div style={{ fontFamily:FF, width:"100%", minHeight: isDesktop(w)?"auto":"100vh", background:s.bg, display:"flex", flexDirection:"column", alignItems:"center", justifyContent:"space-between", padding: clamp(w,"48px 28px 40px","60px 48px 50px","60px 64px 56px"), transition:"background 0.4s", boxSizing:"border-box" }}>
+      <div style={{ width:"100%", display:"flex", justifyContent:"flex-end" }}>
+        <button onClick={onDone} style={{ background:"rgba(255,255,255,0.2)", border:"none", borderRadius:12, padding:"6px 14px", color:"white", fontFamily:FF, fontSize:13, cursor:"pointer", fontWeight:600 }}>Salta</button>
+      </div>
+      <div style={{ flex:1, display:"flex", flexDirection:"column", alignItems:"center", justifyContent:"center", gap:28, opacity:anim?1:0, transform:anim?"translateY(0)":"translateY(20px)", transition:"all 0.35s ease" }}>
+        <div style={{ width:iconSize, height:iconSize, borderRadius:iconSize/2, background:"rgba(255,255,255,0.2)", display:"flex", alignItems:"center", justifyContent:"center", fontSize:iconSize*0.53, boxShadow:"0 8px 32px rgba(0,0,0,0.15)" }}>{s.icon}</div>
+        <div style={{ textAlign:"center", maxWidth:480 }}>
+          <h1 style={{ color:"white", fontSize:titleSize, fontWeight:700, margin:"0 0 14px", lineHeight:1.2, whiteSpace:"pre-line" }}>{s.title}</h1>
+          <p style={{ color:"rgba(255,255,255,0.85)", fontSize:descSize, margin:0, lineHeight:1.6 }}>{s.desc}</p>
+        </div>
+      </div>
+      <div style={{ width:"100%", maxWidth:440, display:"flex", flexDirection:"column", alignItems:"center", gap:20 }}>
+        <div style={{ display:"flex", gap:8 }}>
+          {SLIDES.map((_,i)=><div key={i} style={{ height:8, borderRadius:4, transition:"all .3s", width:i===slide?28:8, background:i===slide?"white":"rgba(255,255,255,0.35)" }}/>)}
+        </div>
+        <button onClick={next} style={{ width:"100%", padding:"18px", borderRadius:20, background:"white", border:"none", color:ctaColors[slide], fontSize:clamp(w,17,18,19), fontWeight:700, fontFamily:FF, cursor:"pointer", boxShadow:"0 6px 24px rgba(0,0,0,0.15)" }}>{s.cta}</button>
+      </div>
+    </div>
+  );
+}
+
+/* ══ PDF SCREEN ══ */
+function PDFScreen({ routine, onBack, w }) {
+  const badgeColor  = routine.tipo==="ordinaria"?"#2E7D32":"#E65100";
+  const badgeBg     = routine.tipo==="ordinaria"?"#E8F5E9":"#FFF3E0";
+  const badgeBorder = routine.tipo==="ordinaria"?"#81C784":"#FFB74D";
+  const badgeLabel  = routine.tipo==="ordinaria"?"🔁 Routine":"⭐ Evento speciale";
+  const cardW       = clamp(w, 88, 100, 110);
+  const emojiSz     = clamp(w, 48, 54, 60);
+  return (
+    <div style={{ fontFamily:FF, background:"#F8FAFF", minHeight: isDesktop(w)?"auto":"100vh" }}>
+      <div className="no-print" style={{ background:"linear-gradient(90deg,#FF6B9D,#FFB347)", padding: clamp(w,"14px 20px","16px 28px","18px 36px"), display:"flex", alignItems:"center", gap:12 }}>
+        <button onClick={onBack} style={btnBack}>← Indietro</button>
+        <div>
+          <h1 style={{ color:"white", margin:0, fontSize:clamp(w,16,18,20), fontWeight:700 }}>Stampa / PDF</h1>
+          <p style={{ color:"rgba(255,255,255,0.85)", margin:0, fontSize:11 }}>{routine.titolo}</p>
+        </div>
+      </div>
+      <div style={{ margin: clamp(w,12,16,24), background:"white", borderRadius:20, padding: clamp(w,16,20,28), boxShadow:"0 4px 20px rgba(0,0,0,0.08)" }}>
+        <div style={{ textAlign:"center", borderBottom:`3px solid ${routine.colore}`, paddingBottom:12, marginBottom:16 }}>
+          <h2 style={{ color:routine.colore, margin:"0 0 6px", fontSize:clamp(w,22,26,30) }}>{routine.titolo}</h2>
+          <span style={{ display:"inline-block", padding:"3px 12px", borderRadius:20, fontSize:12, fontWeight:700, background:badgeBg, color:badgeColor, border:`2px solid ${badgeBorder}` }}>{badgeLabel}</span>
+        </div>
+        <div style={{ display:"flex", flexWrap:"wrap", alignItems:"center", justifyContent:"center", gap: clamp(w,6,8,12) }}>
+          {routine.attivita.map((a,idx)=>{
+            const pitt=PITT_MAP[a.pittogramma]; const isLast=idx===routine.attivita.length-1;
+            return (
+              <div key={a.id} style={{ display:"flex", alignItems:"center", gap: clamp(w,4,6,8) }}>
+                <div style={{ display:"flex", flexDirection:"column", alignItems:"center", gap:6, background:"#FAFAFA", borderRadius:16, padding: clamp(w,"10px 8px","12px 10px","14px 12px"), border:"2px solid #E8E8E8", width:cardW }}>
+                  <span style={{ fontSize:11, color:"#ccc", fontWeight:700 }}>{idx+1}</span>
+                  {a.tipo==="foto"&&a.foto?<img src={a.foto} style={{ width:emojiSz, height:emojiSz, borderRadius:12, objectFit:"cover" }} alt=""/>:<span style={{ fontSize:emojiSz, lineHeight:1 }}>{pitt?.emoji||"❓"}</span>}
+                  <span style={{ fontSize: clamp(w,10,11,12), textAlign:"center", color:"#333", fontWeight:600, lineHeight:1.3 }}>{a.testo||pitt?.label||""}</span>
+                </div>
+                {!isLast&&<span style={{ fontSize: clamp(w,20,24,28), color:routine.colore, fontWeight:700 }}>→</span>}
+              </div>
+            );
+          })}
+        </div>
+        <p style={{ textAlign:"center", marginTop:16, fontSize:11, color:"#ccc" }}>Creato con Storie Sociali</p>
+      </div>
+      <div className="no-print" style={{ margin: clamp(w,"0 12px 12px","0 16px 16px","0 24px 24px"), background:"#FFF9F0", borderRadius:14, padding:14, border:"2px solid #FFE0B2" }}>
+        <p style={{ margin:"0 0 6px", fontWeight:700, color:"#E65100", fontSize:13 }}>📋 Come salvare come PDF:</p>
+        <p style={{ margin:0, fontSize:12, color:"#666", lineHeight:1.9 }}>
+          <b>PC:</b> Ctrl+P → Salva come PDF &nbsp;|&nbsp; <b>Android:</b> menu ⋮ → Stampa → Salva come PDF<br/>
+          <b>iPhone:</b> Condividi → Stampa → pizzica per ingrandire
+        </p>
+      </div>
+      <div className="no-print" style={{ padding: clamp(w,"0 12px 24px","0 16px 28px","0 24px 32px") }}>
+        <button onClick={()=>window.print()} style={{ width:"100%", padding: clamp(w,"16px","18px","20px"), borderRadius:20, background:`linear-gradient(135deg,${routine.colore},${routine.colore}bb)`, border:"none", color:"white", fontSize: clamp(w,17,18,20), fontWeight:700, fontFamily:FF, cursor:"pointer", boxShadow:`0 6px 20px ${routine.colore}44` }}>
+          🖨️ Stampa / Salva come PDF
+        </button>
+      </div>
+    </div>
+  );
+}
+
+/* ══ ROUTINE CARD ══ */
+function RoutineCard({ r, theme, onShow, onEdit, onPdf, onDelete, w }) {
+  const [confirmDel, setConfirmDel] = useState(false);
+  return (
+    <div style={{ background:"white", borderRadius:20, margin: clamp(w,"10px 12px","12px 16px","14px 20px"), padding: clamp(w,14,16,20), boxShadow:`0 4px 20px ${r.colore}33`, border:`3px solid ${r.colore}` }}>
+      <div style={{ display:"flex", justifyContent:"space-between", alignItems:"flex-start" }}>
+        <div>
+          <span style={badgeS(r.tipo)}>{r.tipo==="ordinaria"?"🔁 Routine":"⭐ Speciale"}</span>
+          <h2 style={{ margin:"6px 0 2px", fontSize: clamp(w,17,18,20), color:"#333", fontWeight:700 }}>{r.titolo}</h2>
+          <p style={{ margin:0, fontSize:12, color:"#aaa" }}>{r.attivita.length} attività</p>
+        </div>
+        <div style={{ display:"flex", flexWrap:"wrap", maxWidth:120, gap:4, justifyContent:"flex-end" }}>
+          {r.attivita.slice(0,4).map(a=>(
+            <span key={a.id} style={{ fontSize: clamp(w,22,24,26) }}>
+              {a.tipo==="foto"&&a.foto?<img src={a.foto} style={{ width:28,height:28,borderRadius:8,objectFit:"cover" }} alt=""/>:PITT_MAP[a.pittogramma]?.emoji}
+            </span>
+          ))}
+        </div>
+      </div>
+      <div style={{ display:"flex", gap:8, marginTop:12 }}>
+        <button onClick={onShow} style={{ ...aBtn(r.colore), flex:2, fontSize: clamp(w,13,14,15) }}>👁️ Mostra</button>
+        <button onClick={onEdit} style={{ ...gBtn, fontSize: clamp(w,13,14,15) }}>✏️ Modifica</button>
+        <button onClick={onPdf} style={{ ...oBtn, fontSize: clamp(w,13,14,15) }}>🖨️</button>
+        {!confirmDel
+          ?<button onClick={()=>setConfirmDel(true)} style={{ background:"#FFE4E4", border:"none", borderRadius:14, padding:"10px 12px", cursor:"pointer", fontFamily:FF, fontWeight:700, color:"#FF6B6B", fontSize:14 }}>🗑️</button>
+          :<button onClick={()=>{onDelete();setConfirmDel(false);}} style={{ background:"#FF6B6B", border:"none", borderRadius:14, padding:"10px 12px", cursor:"pointer", fontFamily:FF, fontWeight:700, color:"white", fontSize:13 }}>Sicuro?</button>}
+      </div>
+    </div>
+  );
+}
+
+/* ══ PROFILO SCREEN ══ */
+function ProfiloScreen({ profilo, onSave, onBack, w }) {
+  const [nome,setNome]   = useState(profilo?.nome||"");
+  const [sesso,setSesso] = useState(profilo?.sesso||"maschio");
+  const [foto,setFoto]   = useState(profilo?.foto||null);
+  const ref = useRef();
+  const t = THEME[sesso];
+  function handleFoto(e) { const f=e.target.files[0]; if(!f) return; const r=new FileReader(); r.onload=ev=>setFoto(ev.target.result); r.readAsDataURL(f); }
+  const avatarSize = clamp(w, 100, 120, 140);
+  return (
+    <Wrap bg={t.secondary} w={w}>
+      <div style={{ background:t.gradient, padding: clamp(w,"14px 20px","16px 28px","18px 36px"), display:"flex", alignItems:"center", gap:12 }}>
+        <button onClick={onBack} style={btnBack}>← Indietro</button>
+        <h1 style={{ color:"white", margin:0, fontSize: clamp(w,18,20,22), fontWeight:700 }}>{profilo?"Modifica profilo":"Nuovo profilo"}</h1>
+      </div>
+      <div style={{ padding: clamp(w,16,20,32) }}>
+        <div style={{ textAlign:"center", marginBottom:24 }}>
+          <div onClick={()=>ref.current.click()} style={{ width:avatarSize, height:avatarSize, borderRadius:avatarSize/2, margin:"0 auto 12px", background:t.gradient, display:"flex", alignItems:"center", justifyContent:"center", overflow:"hidden", border:`4px solid ${t.primary}`, cursor:"pointer", boxShadow:`0 6px 24px ${t.primary}44` }}>
+            {foto?<img src={foto} style={{ width:"100%",height:"100%",objectFit:"cover" }} alt=""/>:<span style={{ fontSize:avatarSize*0.47 }}>{sesso==="maschio"?"👦":"👧"}</span>}
+          </div>
+          <button onClick={()=>ref.current.click()} style={{ background:t.light, border:`2px solid ${t.primary}`, borderRadius:12, padding:"8px 18px", cursor:"pointer", fontFamily:FF, fontWeight:600, color:t.text, fontSize:14 }}>📷 {foto?"Cambia foto":"Aggiungi foto"}</button>
+          <input ref={ref} type="file" accept="image/*" style={{ display:"none" }} onChange={handleFoto}/>
+          {foto&&<button onClick={()=>setFoto(null)} style={{ marginLeft:8, background:"#FFE4E4", border:"2px solid #FF6B6B", borderRadius:12, padding:"8px 14px", cursor:"pointer", fontFamily:FF, fontWeight:600, color:"#FF6B6B", fontSize:14 }}>✕</button>}
+          <p style={{ color:"#aaa", fontSize:12, margin:"8px 0 0" }}>La foto rimane solo sul tuo dispositivo</p>
+        </div>
+        <label style={{ fontWeight:700, color:t.text, fontSize: clamp(w,14,15,16), display:"block", marginBottom:6 }}>Nome del bambino</label>
+        <input style={{ ...iStyle(t.primary), marginBottom:20, fontSize: clamp(w,15,16,17) }} placeholder="Es. Marco, Sofia..." value={nome} onChange={e=>setNome(e.target.value)}/>
+        <label style={{ fontWeight:700, color:t.text, fontSize: clamp(w,14,15,16), display:"block", marginBottom:10 }}>Sesso</label>
+        <div style={{ display:"flex", gap:12, marginBottom:28 }}>
+          {["maschio","femmina"].map(s=>(
+            <button key={s} onClick={()=>setSesso(s)} style={{ flex:1, padding: clamp(w,"14px","16px","18px"), borderRadius:18, border:`3px solid ${sesso===s?THEME[s].primary:"#eee"}`, background:sesso===s?THEME[s].light:"white", cursor:"pointer", fontFamily:FF, fontWeight:700, fontSize: clamp(w,15,16,17), color:sesso===s?THEME[s].text:"#aaa", boxShadow:sesso===s?`0 4px 14px ${THEME[s].primary}33`:"none", transition:"all .2s" }}>
+              {s==="maschio"?"👦 Maschio":"👧 Femmina"}
+            </button>
+          ))}
+        </div>
+        <button onClick={()=>{ if(!nome.trim()) return; onSave({ id:profilo?.id||Date.now(), nome, sesso, foto }); }} style={{ width:"100%", padding: clamp(w,"16px","18px","20px"), borderRadius:20, background:t.gradient, border:"none", color:"white", fontSize: clamp(w,17,18,20), fontWeight:700, fontFamily:FF, cursor:"pointer", boxShadow:`0 6px 20px ${t.primary}44` }}>
+          Salva profilo ✨
+        </button>
+      </div>
+    </Wrap>
+  );
+}
+
+/* ══ EDITOR SCREEN ══ */
+function EditorScreen({ routine, theme, onBack, onUpdate, w }) {
+  const [r,setR]                     = useState(routine);
+  const [showPicker,setShowPicker]   = useState(false);
+  const [catAttiva,setCatAttiva]     = useState(CATEGORIE[0].id);
+  const [editTitolo,setEditTitolo]   = useState(false);
+  const [titoloTemp,setTitoloTemp]   = useState(routine.titolo);
+  const fileRefs = useRef({});
+  const fotoRef  = useRef();
+  const pittCols = clamp(w, 4, 5, 6);
+
+  function sync(u) { setR(u); onUpdate(u); }
+  function aggiungiPitt(pid) { const p=PITT_MAP[pid]; sync({ ...r, attivita:[...r.attivita,{ id:Date.now(), pittogramma:pid, testo:p?.label||"", tipo:"pittogramma", foto:null }] }); setShowPicker(false); }
+  function aggiungiFoto(e) { const f=e.target.files[0]; if(!f) return; const rd=new FileReader(); rd.onload=ev=>sync({ ...r, attivita:[...r.attivita,{ id:Date.now(), pittogramma:null, testo:"", tipo:"foto", foto:ev.target.result }] }); rd.readAsDataURL(f); setShowPicker(false); }
+  function rimuovi(id) { sync({ ...r, attivita:r.attivita.filter(a=>a.id!==id) }); }
+  function aggiornaTesto(id,testo) { sync({ ...r, attivita:r.attivita.map(a=>a.id===id?{...a,testo}:a) }); }
+  function cambiaFoto(id,e) { const f=e.target.files[0]; if(!f) return; const rd=new FileReader(); rd.onload=ev=>sync({ ...r, attivita:r.attivita.map(a=>a.id===id?{...a,foto:ev.target.result}:a) }); rd.readAsDataURL(f); }
+  function salvaTitolo() { sync({ ...r, titolo:titoloTemp }); setEditTitolo(false); }
+
+  return (
+    <Wrap w={w}>
+      <div style={{ background:`linear-gradient(90deg,${r.colore},${r.colore}aa)`, padding: clamp(w,"14px 20px","16px 28px","18px 36px"), display:"flex", alignItems:"center", gap:12 }}>
+        <button onClick={onBack} style={btnBack}>← Indietro</button>
+        <div style={{ flex:1 }}>
+          {editTitolo
+            ?<div style={{ display:"flex", gap:6, alignItems:"center" }}>
+               <input style={{ flex:1, padding:"6px 10px", borderRadius:10, border:"2px solid rgba(255,255,255,0.6)", background:"rgba(255,255,255,0.2)", color:"white", fontFamily:FF, fontSize:16, outline:"none" }} value={titoloTemp} onChange={e=>setTitoloTemp(e.target.value)}/>
+               <button onClick={salvaTitolo} style={{ background:"rgba(255,255,255,0.3)", border:"none", borderRadius:8, padding:"6px 10px", color:"white", fontFamily:FF, cursor:"pointer", fontWeight:700 }}>✓</button>
+             </div>
+            :<div style={{ display:"flex", alignItems:"center", gap:8 }}>
+               <h1 style={{ color:"white", margin:0, fontSize: clamp(w,16,18,20), fontWeight:700 }}>{r.titolo}</h1>
+               <button onClick={()=>setEditTitolo(true)} style={{ background:"rgba(255,255,255,0.25)", border:"none", borderRadius:8, padding:"4px 8px", color:"white", cursor:"pointer", fontSize:13 }}>✏️</button>
+             </div>}
+          <p style={{ color:"rgba(255,255,255,0.8)", margin:0, fontSize:11 }}>{r.tipo==="ordinaria"?"🔁 Routine":"⭐ Speciale"}</p>
+        </div>
+      </div>
+      <div style={{ padding: clamp(w,"10px 12px 100px","12px 16px 100px","16px 24px 100px") }}>
+        {r.attivita.length===0&&<div style={{ textAlign:"center", padding:"40px", color:"#ccc" }}><div style={{ fontSize:52 }}>🎯</div><p style={{ marginTop:12 }}>Aggiungi la prima attività!</p></div>}
+        {r.attivita.map((a,idx)=>{
+          const pitt=PITT_MAP[a.pittogramma];
+          return (
+            <div key={a.id} style={{ display:"flex", alignItems:"center", gap:10, background:"white", borderRadius:16, padding:"10px 12px", marginBottom:10, boxShadow:"0 2px 10px rgba(0,0,0,0.06)", border:"2px solid #F0F0F0" }}>
+              <span style={{ fontSize:13, color:"#ccc", fontWeight:700, minWidth:20 }}>{idx+1}</span>
+              <div onClick={()=>{ if(a.tipo==="foto") fileRefs.current[a.id]?.click(); }} style={{ cursor:a.tipo==="foto"?"pointer":"default" }}>
+                {a.tipo==="foto"&&a.foto?<img src={a.foto} style={{ width:48,height:48,borderRadius:12,objectFit:"cover",border:"2px solid #eee" }} alt=""/>
+                  :a.tipo==="foto"?<div style={{ width:48,height:48,borderRadius:12,background:"#f5f5f5",border:"2px dashed #ccc",display:"flex",alignItems:"center",justifyContent:"center",fontSize:22 }}>📷</div>
+                  :<span style={{ fontSize: clamp(w,32,36,40) }}>{pitt?.emoji}</span>}
+                {a.tipo==="foto"&&<input ref={el=>fileRefs.current[a.id]=el} type="file" accept="image/*" style={{ display:"none" }} onChange={e=>cambiaFoto(a.id,e)}/>}
+              </div>
+              <input style={{ flex:1, padding:"8px 10px", borderRadius:12, border:"2px solid #eee", fontSize: clamp(w,13,14,15), fontFamily:FF, outline:"none" }} value={a.testo} placeholder="Descrizione..." onChange={e=>aggiornaTesto(a.id,e.target.value)}/>
+              <button onClick={()=>rimuovi(a.id)} style={{ background:"#FFE4E4", border:"none", borderRadius:10, width:34, height:34, cursor:"pointer", fontSize:18, color:"#FF6B6B", display:"flex", alignItems:"center", justifyContent:"center" }}>×</button>
+            </div>
+          );
+        })}
+        <button onClick={()=>setShowPicker(true)} style={{ ...aBtn(r.colore), width:"100%", marginTop:8, borderRadius:18, padding: clamp(w,"14px","16px","18px"), fontSize: clamp(w,15,16,17) }}>+ Aggiungi attività</button>
+      </div>
+      {showPicker&&(
+        <div style={{ position:"fixed", inset:0, background:"rgba(0,0,0,0.5)", display:"flex", alignItems:"flex-end", justifyContent:"center", zIndex:200 }}>
+          <div style={{ background:"white", borderRadius:"24px 24px 0 0", padding:"20px", width:"100%", maxWidth: clamp(w,"100%",600,780), maxHeight:"80vh", overflow:"hidden", boxSizing:"border-box", display:"flex", flexDirection:"column" }}>
+            <h3 style={{ margin:"0 0 14px", textAlign:"center", fontFamily:FF, fontSize: clamp(w,17,18,20) }}>Aggiungi attività</h3>
+            <div style={{ marginBottom:14, paddingBottom:14, borderBottom:"2px solid #F5F5F5" }}>
+              <button onClick={()=>fotoRef.current.click()} style={{ width:"100%", padding:"13px", borderRadius:16, background:"#FFF3E0", border:"2px dashed #FFB347", cursor:"pointer", fontFamily:FF, fontWeight:700, fontSize: clamp(w,14,15,16), color:"#E65100" }}>📷 Scegli foto dalla libreria</button>
+              <input ref={fotoRef} type="file" accept="image/*" style={{ display:"none" }} onChange={aggiungiFoto}/>
+              <p style={{ margin:"6px 0 0", fontSize:11, color:"#aaa", textAlign:"center" }}>La foto non viene salvata fuori dall'app</p>
+            </div>
+            <div style={{ display:"flex", gap:6, overflowX:"auto", paddingBottom:10, marginBottom:10, flexShrink:0 }}>
+              {CATEGORIE.map(c=>(
+                <button key={c.id} onClick={()=>setCatAttiva(c.id)} style={{ flexShrink:0, padding:"7px 12px", borderRadius:20, border:`2px solid ${catAttiva===c.id?r.colore:"#eee"}`, background:catAttiva===c.id?r.colore+"22":"white", cursor:"pointer", fontFamily:FF, fontWeight:600, fontSize:13, color:catAttiva===c.id?r.colore:"#888", whiteSpace:"nowrap" }}>
+                  {c.emoji} {c.label}
+                </button>
+              ))}
+            </div>
+            <div style={{ overflowY:"auto", flex:1 }}>
+              <div style={{ display:"grid", gridTemplateColumns:`repeat(${pittCols},1fr)`, gap:10 }}>
+                {CATEGORIE.find(c=>c.id===catAttiva)?.items.map(p=>(
+                  <button key={p.id} onClick={()=>aggiungiPitt(p.id)} style={{ background:"#FAFAFA", border:"2px solid #eee", borderRadius:16, padding: clamp(w,"10px 6px","12px 6px","14px 8px"), cursor:"pointer", display:"flex", flexDirection:"column", alignItems:"center", gap:4 }}>
+                    <span style={{ fontSize: clamp(w,28,30,34) }}>{p.emoji}</span>
+                    <span style={{ fontSize:10, color:"#666", fontFamily:FF, textAlign:"center", lineHeight:1.2 }}>{p.label}</span>
+                  </button>
+                ))}
+              </div>
+            </div>
+            <button onClick={()=>setShowPicker(false)} style={{ ...aBtn("#aaa"), width:"100%", marginTop:12, borderRadius:16, flexShrink:0 }}>Annulla</button>
+          </div>
+        </div>
+      )}
+    </Wrap>
+  );
+}
+
+/* ══ ROOT APP ══ */
+function App() {
+  const w = useW();
+  const [onboarded, setOnboarded]       = useState(() => LS.get("ssv2_onboarded", false));
+  const [profili, setProfili]           = useState(() => LS.get("ssv2_profili", []));
+  const [routinesDB, setRoutinesDB]     = useState(() => LS.get("ssv2_routines", {}));
+  const [profiloAttivo, setProfiloAttivo] = useState(null);
+  const [screen, setScreen]             = useState("profili");
+  const [editingRoutine, setEditingRoutine]   = useState(null);
+  const [selectedRoutine, setSelectedRoutine] = useState(null);
+  const [currentStep, setCurrentStep]   = useState(0);
+  const [showNewForm, setShowNewForm]   = useState(false);
+  const [newTitolo, setNewTitolo]       = useState("");
+  const [newTipo, setNewTipo]           = useState("ordinaria");
+  const [newColore, setNewColore]       = useState(PALETTE[3]);
+  const [editingProfilo, setEditingProfilo] = useState(null);
+  const [storageWarn, setStorageWarn]   = useState(false);
+
+  const theme = profiloAttivo ? THEME[profiloAttivo.sesso] : THEME.maschio;
+  const profCols = clamp(w, 2, 3, 4);
+
+  useEffect(() => { if(!LS.set("ssv2_profili", profili)) setStorageWarn(true); }, [profili]);
+  useEffect(() => { if(!LS.set("ssv2_routines", routinesDB)) setStorageWarn(true); }, [routinesDB]);
+
+  if (!onboarded) return <Onboarding onDone={()=>{ LS.set("ssv2_onboarded",true); setOnboarded(true); }} w={w}/>;
+
+  const getRoutines = () => profiloAttivo ? (routinesDB[profiloAttivo.id]||[]) : [];
+  const setRoutines = (list) => setRoutinesDB(db => ({ ...db, [profiloAttivo.id]:list }));
+  function salvaProfilo(p) { setProfili(prev=>prev.some(x=>x.id===p.id)?prev.map(x=>x.id===p.id?p:x):[...prev,p]); if(profiloAttivo?.id===p.id) setProfiloAttivo(p); }
+  function creaRoutina() { if(!newTitolo.trim()) return; const n={id:Date.now(),titolo:newTitolo,tipo:newTipo,colore:newColore,attivita:[]}; setRoutines([...getRoutines(),n]); setEditingRoutine(n); setNewTitolo(""); setShowNewForm(false); setScreen("editor"); }
+  function aggiornaRoutina(u) { setEditingRoutine(u); setRoutines(getRoutines().map(r=>r.id===u.id?u:r)); }
+  function eliminaRoutina(id) { setRoutines(getRoutines().filter(r=>r.id!==id)); }
+
+  const Warn = () => storageWarn ? (
+    <div style={{ background:"#FFF3CD", borderBottom:"2px solid #FFD600", padding:"10px 16px", display:"flex", justifyContent:"space-between", alignItems:"center" }}>
+      <span style={{ fontSize:13, color:"#856404" }}>⚠️ Memoria quasi piena. Rimuovi alcune foto.</span>
+      <button onClick={()=>setStorageWarn(false)} style={{ background:"none", border:"none", cursor:"pointer", fontSize:18 }}>×</button>
+    </div>
+  ) : null;
+
+  if (screen==="nuovoProfilo") return <ProfiloScreen profilo={editingProfilo} onSave={p=>{ salvaProfilo(p); setScreen("profili"); }} onBack={()=>setScreen("profili")} w={w}/>;
+  if (screen==="pdf"&&selectedRoutine) return <Wrap w={w}><PDFScreen routine={selectedRoutine} onBack={()=>setScreen("home")} w={w}/></Wrap>;
+  if (screen==="editor"&&editingRoutine) return <EditorScreen routine={editingRoutine} theme={theme} onBack={()=>setScreen("home")} onUpdate={aggiornaRoutina} w={w}/>;
+
+  if (screen==="bambino"&&selectedRoutine) {
+    const att=selectedRoutine.attivita, step=att[currentStep], pitt=PITT_MAP[step?.pittogramma], isLast=currentStep===att.length-1;
+    const imgSize = clamp(w, 160, 200, 240);
+    const emojiFZ = clamp(w, 90, 110, 130);
+    return (
+      <Wrap bg={`linear-gradient(135deg,${selectedRoutine.colore}22,${selectedRoutine.colore}11)`} w={w}>
+        <div style={{ background:`linear-gradient(90deg,${selectedRoutine.colore},${selectedRoutine.colore}bb)`, padding: clamp(w,"14px 20px","16px 28px","18px 36px"), display:"flex", alignItems:"center", gap:12 }}>
+          <button onClick={()=>setScreen("home")} style={btnBack}>← Esci</button>
+          <h1 style={{ color:"white", margin:0, fontSize: clamp(w,17,19,22), fontWeight:700 }}>{selectedRoutine.titolo}</h1>
+        </div>
+        <div style={{ display:"flex", justifyContent:"center", gap:8, padding:"16px 0 0" }}>
+          {att.map((_,i)=><div key={i} style={{ height:10, borderRadius:5, transition:"all .3s", width:i===currentStep?28:10, background:i<=currentStep?selectedRoutine.colore:"#ddd" }}/>)}
+        </div>
+        <div style={{ background:"white", borderRadius:28, margin: clamp(w,14,18,24), padding: clamp(w,"28px 20px","32px 28px","40px 36px"), boxShadow:"0 8px 32px rgba(0,0,0,0.1)", textAlign:"center", minHeight: clamp(w,260,300,340), display:"flex", flexDirection:"column", alignItems:"center", justifyContent:"center", gap:18 }}>
+          {step?.tipo==="foto"&&step?.foto?<img src={step.foto} style={{ width:imgSize, height:imgSize, borderRadius:24, objectFit:"cover", boxShadow:"0 4px 16px rgba(0,0,0,0.15)" }} alt=""/>:<span style={{ fontSize:emojiFZ }}>{pitt?.emoji}</span>}
+          <h2 style={{ fontSize: clamp(w,26,30,34), color:"#333", margin:0, fontWeight:700 }}>{step?.testo}</h2>
+          <p style={{ color:"#aaa", fontSize: clamp(w,13,15,16), margin:0 }}>Passo {currentStep+1} di {att.length}</p>
+        </div>
+        <div style={{ display:"flex", gap:12, padding: clamp(w,"0 14px","0 18px","0 24px") }}>
+          {currentStep>0&&<button onClick={()=>setCurrentStep(currentStep-1)} style={{ ...aBtn("#aaa"), flex:1, fontSize: clamp(w,16,18,20) }}>← Prima</button>}
+          {!isLast?<button onClick={()=>setCurrentStep(currentStep+1)} style={{ ...aBtn(selectedRoutine.colore), flex:1, fontSize: clamp(w,16,18,20) }}>Dopo →</button>:<button onClick={()=>setScreen("home")} style={{ ...aBtn("#66BB6A"), flex:1, fontSize: clamp(w,16,18,20) }}>🎉 Finito!</button>}
+        </div>
+      </Wrap>
+    );
+  }
+
+  /* ── HOME PROFILI ── */
+  if (screen==="profili") return (
+    <Wrap w={w}>
+      <Warn/>
+      <div style={{ padding: clamp(w,"28px 20px 14px","32px 28px 16px","36px 36px 18px"), display:"flex", alignItems:"center", justifyContent:"space-between" }}>
+        <div>
+          <p style={{ margin:0, fontSize: clamp(w,13,14,15), color:"#aaa", fontWeight:500 }}>{getGreeting()} 👋</p>
+          <h1 style={{ margin:"2px 0 0", fontSize: clamp(w,26,30,34), fontWeight:700, color:"#2D3436", lineHeight:1.1 }}>Le mie<br/><span style={{ color:"#667EEA" }}>Storie Sociali</span></h1>
+        </div>
+        <div style={{ width: clamp(w,48,56,64), height: clamp(w,48,56,64), borderRadius:32, background:"linear-gradient(135deg,#667EEA,#764BA2)", display:"flex", alignItems:"center", justifyContent:"center", fontSize: clamp(w,24,28,32), boxShadow:"0 4px 16px rgba(102,126,234,0.4)" }}>📖</div>
+      </div>
+      <div style={{ padding: clamp(w,"0 20px 14px","0 28px 16px","0 36px 18px") }}>
+        <p style={{ margin:0, fontSize: clamp(w,13,15,16), color:"#aaa" }}>{profili.length===0?"Crea il primo profilo per iniziare!":profili.length===1?"1 profilo attivo":`${profili.length} profili attivi`}</p>
+      </div>
+      <div style={{ height:2, background:"linear-gradient(90deg,#667EEA22,#764BA222)", margin: clamp(w,"0 20px 16px","0 28px 18px","0 36px 20px") }}/>
+      <div style={{ padding: clamp(w,"0 12px 100px","0 16px 100px","0 24px 100px") }}>
+        {profili.length===0&&<div style={{ textAlign:"center", padding:"40px 20px" }}><div style={{ fontSize:64, marginBottom:12 }}>👶</div><p style={{ color:"#ccc", fontSize:15 }}>Nessun bambino ancora!</p></div>}
+        <div style={{ display:"grid", gridTemplateColumns:`repeat(${profCols},1fr)`, gap: clamp(w,10,14,18) }}>
+          {profili.map(p=>{
+            const t=THEME[p.sesso]; const n=(routinesDB[p.id]||[]).length;
+            return (
+              <div key={p.id} style={{ background:"white", borderRadius:20, padding: clamp(w,12,14,18), boxShadow:`0 4px 20px ${t.primary}22`, border:`2px solid ${t.light}`, position:"relative" }}>
+                <div onClick={()=>{ setProfiloAttivo(p); setScreen("home"); }} style={{ cursor:"pointer", textAlign:"center" }}>
+                  <div style={{ width: clamp(w,60,70,80), height: clamp(w,60,70,80), borderRadius:40, margin:"0 auto 10px", background:t.gradient, display:"flex", alignItems:"center", justifyContent:"center", overflow:"hidden", border:`3px solid ${t.primary}` }}>
+                    {p.foto?<img src={p.foto} style={{ width:"100%",height:"100%",objectFit:"cover" }} alt=""/>:<span style={{ fontSize: clamp(w,28,32,38) }}>{p.sesso==="maschio"?"👦":"👧"}</span>}
+                  </div>
+                  <div style={{ fontWeight:700, fontSize: clamp(w,15,16,18), color:"#2D3436" }}>{p.nome}</div>
+                  <div style={{ fontSize:12, color:"#aaa", marginTop:2 }}>{n===0?"Nessuna storia":n===1?"1 storia":`${n} storie`}</div>
+                  <div style={{ marginTop:6, display:"inline-block", padding:"3px 10px", borderRadius:20, background:t.light, color:t.text, fontSize:11, fontWeight:700 }}>{p.sesso==="maschio"?"💙":"🩷"} {p.sesso==="maschio"?"Maschio":"Femmina"}</div>
+                </div>
+                <button onClick={()=>{ setEditingProfilo(p); setScreen("nuovoProfilo"); }} style={{ display:"block", width:"100%", marginTop:10, background:t.light, border:`2px solid ${t.primary}`, borderRadius:10, padding:"6px", cursor:"pointer", fontFamily:FF, fontWeight:600, color:t.text, fontSize:12 }}>✏️ Modifica</button>
+              </div>
+            );
+          })}
+        </div>
+        <div style={{ marginTop: clamp(w,12,16,20), display:"flex", flexDirection:"column", gap:10 }}>
+          <button onClick={()=>{ LS.set("ssv2_onboarded",false); setOnboarded(false); }} style={{ width:"100%", padding:"11px", borderRadius:14, background:"#F5F5F5", border:"none", color:"#aaa", fontSize: clamp(w,13,14,15), fontFamily:FF, fontWeight:600, cursor:"pointer" }}>📖 Rivedi il tutorial</button>
+          <button onClick={()=>{ setEditingProfilo(null); setScreen("nuovoProfilo"); }} style={{ width:"100%", padding: clamp(w,"15px","16px","18px"), borderRadius:20, background:"linear-gradient(135deg,#667EEA,#764BA2)", border:"none", color:"white", fontSize: clamp(w,16,17,18), fontWeight:700, fontFamily:FF, cursor:"pointer", boxShadow:"0 4px 16px rgba(102,126,234,0.35)" }}>+ Aggiungi bambino</button>
+        </div>
+      </div>
+    </Wrap>
+  );
+
+  /* ── HOME BAMBINO ── */
+  if (screen==="home") {
+    const lista=getRoutines();
+    return (
+      <Wrap bg={theme.secondary} w={w}>
+        <Warn/>
+        <div style={{ background:theme.gradient, padding: clamp(w,"14px 20px","16px 28px","18px 36px") }}>
+          <div style={{ display:"flex", alignItems:"center", gap:12 }}>
+            <button onClick={()=>setScreen("profili")} style={btnBack}>← Profili</button>
+            <div style={{ width:44, height:44, borderRadius:22, background:"rgba(255,255,255,0.3)", display:"flex", alignItems:"center", justifyContent:"center", overflow:"hidden", border:"2px solid rgba(255,255,255,0.6)" }}>
+              {profiloAttivo.foto?<img src={profiloAttivo.foto} style={{ width:"100%",height:"100%",objectFit:"cover" }} alt=""/>:<span style={{ fontSize:24 }}>{profiloAttivo.sesso==="maschio"?"👦":"👧"}</span>}
+            </div>
+            <div>
+              <h1 style={{ color:"white", margin:0, fontSize: clamp(w,18,20,22), fontWeight:700 }}>{profiloAttivo.nome}</h1>
+              <p style={{ color:"rgba(255,255,255,0.8)", margin:0, fontSize:12 }}>Le mie storie</p>
+            </div>
+          </div>
+        </div>
+        <div style={{ padding: clamp(w,"6px 0 80px","8px 0 80px","10px 0 80px") }}>
+          {lista.length===0&&<div style={{ textAlign:"center", padding:"40px 20px", color:"#aaa" }}><div style={{ fontSize:56 }}>📖</div><p style={{ marginTop:12 }}>Nessuna storia ancora!<br/>Usa il + per crearne una.</p></div>}
+          {lista.map(r=>(
+            <RoutineCard key={r.id} r={r} theme={theme} w={w}
+              onShow={()=>{ setSelectedRoutine(r); setCurrentStep(0); setScreen("bambino"); }}
+              onEdit={()=>{ setEditingRoutine(r); setScreen("editor"); }}
+              onPdf={()=>{ setSelectedRoutine(r); setScreen("pdf"); }}
+              onDelete={()=>eliminaRoutina(r.id)}
+            />
+          ))}
+          {showNewForm&&(
+            <div style={{ background:"white", borderRadius:20, margin: clamp(w,"10px 12px","12px 16px","14px 20px"), padding: clamp(w,14,16,20), boxShadow:"0 4px 20px rgba(0,0,0,0.1)", border:`3px solid ${theme.primary}` }}>
+              <h3 style={{ margin:"0 0 12px", color:theme.primary, fontSize: clamp(w,17,18,20) }}>✨ Nuova storia</h3>
+              <input style={{ ...iStyle(theme.primary), marginBottom:12 }} placeholder="Nome (es. Oggi dal dottore!)" value={newTitolo} onChange={e=>setNewTitolo(e.target.value)}/>
+              <div style={{ display:"flex", gap:8, marginBottom:12 }}>
+                {["ordinaria","straordinaria"].map(t=>(
+                  <button key={t} onClick={()=>setNewTipo(t)} style={{ flex:1, padding:"10px", borderRadius:14, border:`2px solid ${newTipo===t?theme.primary:"#eee"}`, background:newTipo===t?theme.light:"white", cursor:"pointer", fontFamily:FF, fontWeight:600, fontSize:13, color:newTipo===t?theme.text:"#aaa" }}>
+                    {t==="ordinaria"?"🔁 Routine":"⭐ Speciale"}
+                  </button>
+                ))}
+              </div>
+              <div style={{ display:"flex", gap:8, marginBottom:14, flexWrap:"wrap" }}>
+                {PALETTE.map(c=><div key={c} onClick={()=>setNewColore(c)} style={{ width:28, height:28, borderRadius:14, background:c, cursor:"pointer", border:newColore===c?"3px solid #333":"3px solid transparent" }}/>)}
+              </div>
+              <div style={{ display:"flex", gap:8 }}>
+                <button onClick={creaRoutina} style={{ ...aBtn(theme.primary), flex:2 }}>Crea ✨</button>
+                <button onClick={()=>setShowNewForm(false)} style={gBtn}>✕</button>
+              </div>
+            </div>
+          )}
+        </div>
+        {!showNewForm&&<button onClick={()=>setShowNewForm(true)} style={{ position:"fixed", bottom:24, right:24, width: clamp(w,56,60,68), height: clamp(w,56,60,68), borderRadius:34, background:theme.gradient, border:"none", color:"white", fontSize: clamp(w,28,30,34), cursor:"pointer", boxShadow:`0 6px 20px ${theme.primary}66`, display:"flex", alignItems:"center", justifyContent:"center" }}>+</button>}
+      </Wrap>
+    );
+  }
+  return null;
+}
+
+ReactDOM.createRoot(document.getElementById('root')).render(<App/>);
+  </script>
+</body>
+</html>
